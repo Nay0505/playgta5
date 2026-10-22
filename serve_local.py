@@ -1,10 +1,12 @@
-"""Local mirror server: isolation headers, byte ranges, and engine batch I/O."""
-import argparse, gzip, io, json, mimetypes, re, shutil, webbrowser
+"""Serve the game shell with isolation headers; the browser reads game assets from the selected folder."""
+import argparse, mimetypes, re, webbrowser
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlsplit, unquote, parse_qs
+from urllib.parse import urlsplit, unquote
 
-ROOT = Path(__file__).resolve().parent / 'mirror' / 'playgta5.com'
+ROOT = Path(__file__).resolve().parent
+BUILD = '/b/8b0b5899ed/'
+SOURCE_FILES = {'loader.js', 'game.js', 'io_worker.js', 'wgpu_worker.js'}
 mimetypes.add_type('application/wasm', '.wasm')
 mimetypes.add_type('text/javascript', '.js')
 
@@ -12,6 +14,22 @@ class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         self.byte_range = None
         super().__init__(*args, directory=str(ROOT), **kwargs)
+
+    def translate_path(self, path):
+        url_path = unquote(urlsplit(path).path)
+        routes = {
+            '/': ROOT / 'homepage.html',
+            '/index.html': ROOT / 'homepage.html',
+            '/mirror-sw.js': ROOT / 'mirror-sw.js',
+            '/data/manifest.json': ROOT / 'data-manifest.json',
+        }
+        if url_path in routes:
+            return str(routes[url_path])
+        if url_path.startswith(BUILD):
+            name = url_path[len(BUILD):]
+            if name in SOURCE_FILES:
+                return str(ROOT / name)
+        return str(ROOT / '__not_found__')
 
     def end_headers(self):
         self.send_header('Cross-Origin-Opener-Policy', 'same-origin')
@@ -61,57 +79,14 @@ class Handler(SimpleHTTPRequestHandler):
             outputfile.write(chunk)
             remaining -= len(chunk)
 
-    def do_POST(self):
-        url = urlsplit(self.path)
-        if url.path != '/data/batch':
-            self.send_error(404)
-            return
-        length = int(self.headers.get('Content-Length', '0'))
-        if length > 1024 * 1024:
-            self.send_error(413)
-            return
-        try:
-            runs = json.loads(self.rfile.read(length))
-            if not isinstance(runs, list) or len(runs) > 1000:
-                raise ValueError('invalid batch')
-            selected = []
-            data_root = (ROOT / 'data').resolve()
-            for name, start, end in runs:
-                file = (data_root / name).resolve()
-                if not file.is_relative_to(data_root) or start < 0 or end < start:
-                    raise ValueError('invalid file/range')
-                selected.append((file, start, max(0, min(end + 1, file.stat().st_size) - start)))
-            total = sum(n for _, _, n in selected)
-            if total > 64 * 1024 * 1024:
-                raise ValueError('batch exceeds 64 MiB')
-            output = io.BytesIO()
-            for file, start, n in selected:
-                with file.open('rb') as source:
-                    source.seek(start)
-                    output.write(source.read(n))
-            body = output.getvalue()
-            compressed = parse_qs(url.query).get('gz') == ['1']
-            if compressed:
-                body = gzip.compress(body, compresslevel=1)
-            self.send_response(200)
-            self.send_header('Content-Type', 'application/octet-stream')
-            self.send_header('Content-Length', str(len(body)))
-            self.send_header('X-Run-Lengths', ','.join(str(n) for _, _, n in selected))
-            if compressed:
-                self.send_header('Content-Encoding', 'gzip')
-            self.end_headers()
-            self.wfile.write(body)
-        except (ValueError, TypeError, OSError) as exc:
-            self.send_error(400, str(exc))
-
 if __name__ == '__main__':
     args = argparse.ArgumentParser()
     args.add_argument('--port', type=int, default=8000)
     args.add_argument('--open', action='store_true', help='open the default browser after binding')
     options = args.parse_args()
-    server = ThreadingHTTPServer(('127.0.0.1', options.port), Handler)
+    server = ThreadingHTTPServer(('0.0.0.0', options.port), Handler)
     address = 'http://localhost:%d/' % server.server_port
-    print('Local mirror: %s (Ctrl+C to stop)' % address, flush=True)
+    print('Game server: %s (Ctrl+C to stop)' % address, flush=True)
     if options.open:
         webbrowser.open(address)
     try:

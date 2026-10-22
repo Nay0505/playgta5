@@ -121,7 +121,7 @@ def main():
                 records[rec['path']] = rec
             except ValueError:
                 pass
-    for path, source in [('/index.html', 'homepage.html'), (BUILD + '/loader.js', 'loader.js'),
+    for path, source in [('/index.html', 'homepage.html'), ('/mirror-sw.js', 'mirror-sw.js'), (BUILD + '/loader.js', 'loader.js'),
                          (BUILD + '/game.js', 'game.js'), (BUILD + '/io_worker.js', 'io_worker.js'),
                          (BUILD + '/wgpu_worker.js', 'wgpu_worker.js'), ('/data/manifest.json', 'data-manifest.json'),
                          (BUILD + '/shaders/index.json', 'shader-index.json')]:

@@ -27,12 +27,17 @@ No copyrighted file is included in this repo. If Rockstar Games or any affiliate
 And don't email me for asking the mirror folder. I will not reply to the email.
 
 # How to use
-1. Download the ZIP or just `git clone` it. It should have all this file and folders.
+1. Clone this repository into a Codespace and start the web server with `python3 serve_local.py` (or use `Launch-Local.cmd` on Windows).
+
+2. Open port 8000 in the browser. On first visit, select the `mirror` folder from your computer. It must contain `playgta5.com/data` and `playgta5.com/b/8b0b5899ed`.
+
+The browser shows setup progress while it checks the folder, then starts the game and shows its loading progress. The files are read from the selected folder on demand; the 19.7 GB folder is not synced, uploaded to Codespaces, or copied into the repository. `Launch-Local.cmd` starts the local web server and must be run manually before opening the page; the browser cannot execute a local `.cmd` file. Use a current Chrome or Edge browser over HTTPS (Codespaces port forwarding provides HTTPS).
+
 <p align="center">
   <img src="media/Screenshot 2026-10-07 172103.png" alt="playgta5 SC">
 </p>
 
-2. Paste your `.mirror` folder at your desired path. (It should have 19.7 GB of file size. Check the pic below.)
+The expected folder is about 19.7 GB:
 <p align="center">
   <img src="media/Screenshot 2026-10-07 172216.png" alt="Folder Properties">
 </p>
@@ -42,10 +47,6 @@ And don't email me for asking the mirror folder. I will not reply to the email.
 <p align="center">
   <img src="media/Screenshot 2026-10-07 172758.png" alt="Folder Properties">
 </p>
-
-3. Run the `Launch-Local.cmd` and it will automatically open the URL at `http://localhost:8000/`.
-
-4. Voila!
 
 # Requirement
 Scripts require standard-library Python 3.11 or newer. The bundled Python path

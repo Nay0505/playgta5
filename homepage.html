@@ -7,7 +7,6 @@
 	html, body { margin: 0; height: 100%; background: #000; color: #ccc; font: 12px monospace; overflow: hidden; }
 	#canvas { display: block; position: absolute; left: 0; top: 0; width: 100vw; height: 100vh; background: #000; }
 	/* title screen: the game's loading screen (LOADINGSCREEN_STARTUP) on its 1280x720 stage, scaled to the window; see the script below */
-	@font-face { font-family: 'Chalet'; src: url('/b/8b0b5899ed/title/chalet.woff') format('woff'); }
 	#loading { position: fixed; inset: 0; background: #000; overflow: hidden; transition: opacity .8s; z-index: 5; }
 	#loading.done { opacity: 0; pointer-events: none; }
 	#ls-stage { position: absolute; left: 0; top: 0; width: 1280px; height: 720px; transform-origin: 0 0; overflow: hidden; font: 12px Chalet, sans-serif; color: #fff; }
@@ -27,7 +26,7 @@
 	#modes.ask button:not(:disabled) .ls-key { animation: ls-ask 1.2s ease-in-out infinite; }
 	@keyframes ls-ask { 50% { opacity: .35; } }
 	.ls-key { margin-left: 4px; min-width: 12px; height: 15px; padding: 0 4px; line-height: 16px; border-radius: 2px; background: #fff; color: #000; font-size: 10px; text-transform: uppercase; }
-	.ls-spin { flex: none; width: 22px; height: 22px; margin-left: 2px; background: url('/b/8b0b5899ed/title/spinner.png') center / 24px 24px no-repeat; animation: ls-spin 2s steps(60) infinite; }
+	.ls-spin { flex: none; width: 22px; height: 22px; margin-left: 2px; background: var(--spinner-image, none) center / 24px 24px no-repeat; animation: ls-spin 2s steps(60) infinite; }
 	@keyframes ls-spin { from { transform: rotate(0deg) scaleX(-1); } to { transform: rotate(-360deg) scaleX(-1); } }
 	#label { text-shadow: .85px .85px 1px rgba(0, 0, 0, .45); }
 	#pct { margin-left: 15px; font-variant-numeric: tabular-nums; }
@@ -39,18 +38,113 @@
 	#fill { height: 100%; width: 0; background: #7cc576; }
 	#hud { position: fixed; left: 8px; bottom: 8px; max-width: 60vw; white-space: pre-wrap; opacity: .8; pointer-events: none; }
 	#fps { position: fixed; left: 8px; top: 6px; display: none; color: #0f0; font: bold 18px/1.2 Consolas, monospace; font-variant-numeric: tabular-nums; text-shadow: 1px 1px 2px #000, 0 0 3px #000; pointer-events: none; z-index: 10; }
+	#mirror-gate { position: fixed; inset: 0; display: grid; place-items: center; padding: 24px; background: #080a08; z-index: 20; }
+	#mirror-gate[hidden] { display: none; }
+	#mirror-panel { width: min(540px, 100%); border-left: 3px solid #7cc576; padding: 10px 0 10px 26px; }
+	#mirror-panel h1 { margin: 0 0 14px; color: #fff; font: 28px/1.15 Chalet, sans-serif; }
+	#mirror-panel p { margin: 0 0 18px; color: #aaa; font: 13px/1.6 Consolas, monospace; }
+	#pick-mirror { border: 0; padding: 12px 18px; background: #7cc576; color: #101310; font: bold 13px Consolas, monospace; cursor: pointer; }
+	#pick-mirror:disabled { opacity: .55; cursor: wait; }
+	#mirror-status { min-height: 1.5em; margin-top: 14px !important; color: #d8ddd6 !important; overflow-wrap: anywhere; }
+	#mirror-progress { display: block; width: min(100%, 420px); height: 8px; margin-top: 12px; accent-color: #7cc576; }
+	#mirror-progress[hidden] { display: none; }
 </style>
 </head>
 <body>
+<section id="mirror-gate" aria-labelledby="mirror-title">
+	<div id="mirror-panel">
+		<h1 id="mirror-title">Select your mirror folder</h1>
+		<p>Choose the existing <strong>mirror</strong> folder. Assets are read from your computer as needed and are not uploaded.</p>
+		<button id="pick-mirror" type="button">Choose mirror folder</button>
+		<p id="mirror-status" role="status" aria-live="polite">The folder must contain playgta5.com/data and the game build files.</p>
+		<progress id="mirror-progress" max="100" value="0" aria-label="Preparing the mirror folder" hidden></progress>
+	</div>
+</section>
 <canvas id="canvas" width="800" height="600" tabindex="-1"></canvas>
 <div id="hud"></div>
-<div id="loading"><div id="ls-stage"><div id="ls-screens"></div><img id="ls-logo" src="/b/8b0b5899ed/title/logo.png" alt=""><div id="ls-bars"><div id="modes" class="ls-bar"><button data-act="back"></button><button data-act="map5"></button><button data-act="map6"></button><button data-act="sandbox"></button><button data-act="story"></button></div><div class="ls-bar"><span id="label">Starting...</span><span id="pct">0%</span><i class="ls-spin"></i></div></div></div><div id="ls-log"><div id="data"></div><div id="console"></div></div><div id="bar"><div id="fill"></div></div></div>
+<div id="loading"><div id="ls-stage"><div id="ls-screens"></div><img id="ls-logo" alt=""><div id="ls-bars"><div id="modes" class="ls-bar"><button data-act="back"></button><button data-act="map5"></button><button data-act="map6"></button><button data-act="sandbox"></button><button data-act="story"></button></div><div class="ls-bar"><span id="label">Starting...</span><span id="pct">0%</span><i class="ls-spin"></i></div></div></div><div id="ls-log"><div id="data"></div><div id="console"></div></div><div id="bar"><div id="fill"></div></div></div>
 <div id="fps"></div>
 <script type="module">
 // Page of the browser build. The engine runs in a dedicated worker (loader.js: its "main thread", where the static constructors and
 // main() run and which may block); the page only owns the canvas, which is transferred to that worker and on to the GPU worker.
 // Query string: ?args=-flag1,-flag2=value (added to the engine command line), ?shot=N (screenshot of every N-th present to the dev server).
 const q = new URLSearchParams(location.search);
+let resolveMirrorReady;
+const mirrorReady = new Promise((resolve) => { resolveMirrorReady = resolve; });
+const mirrorStatus = document.getElementById('mirror-status');
+const pickMirror = document.getElementById('pick-mirror');
+const mirrorProgress = document.getElementById('mirror-progress');
+function setMirrorProgress(value, status) {
+	mirrorProgress.hidden = false;
+	mirrorProgress.value = value;
+	mirrorStatus.textContent = status;
+}
+function saveMirrorHandle(handle) {
+	return new Promise((resolve, reject) => {
+		const request = indexedDB.open('gta5-local-mirror', 1);
+		request.onupgradeneeded = () => request.result.createObjectStore('handles');
+		request.onerror = () => reject(request.error);
+		request.onsuccess = () => {
+			const transaction = request.result.transaction('handles', 'readwrite');
+			transaction.objectStore('handles').put(handle, 'root');
+			transaction.oncomplete = resolve;
+			transaction.onerror = transaction.onabort = () => reject(transaction.error);
+		};
+	});
+}
+pickMirror.addEventListener('click', async () => {
+	if (!window.showDirectoryPicker || !('serviceWorker' in navigator)) {
+		mirrorStatus.textContent = 'Use a current Chrome or Edge browser over HTTPS to select a folder.';
+		return;
+	}
+	pickMirror.disabled = true;
+	mirrorProgress.hidden = true;
+	mirrorStatus.textContent = 'Choose the mirror folder...';
+	try {
+		const handle = await showDirectoryPicker({ mode: 'read' });
+		setMirrorProgress(8, 'Checking the selected folder...');
+		if (handle.name !== 'mirror') throw new Error('Select the folder named mirror.');
+		setMirrorProgress(20, 'Checking the game data manifest...');
+		const site = await handle.getDirectoryHandle('playgta5.com');
+		await (await site.getDirectoryHandle('data')).getFileHandle('manifest.json');
+		setMirrorProgress(36, 'Checking the game build...');
+		const build = await (await site.getDirectoryHandle('b')).getDirectoryHandle('8b0b5899ed');
+		await build.getFileHandle('game.wasm');
+		setMirrorProgress(52, 'Loading the title screen assets...');
+		const title = await build.getDirectoryHandle('title');
+		const logo = await title.getFileHandle('logo.png').then((file) => file.getFile());
+		const spinner = await title.getFileHandle('spinner.png').then((file) => file.getFile());
+		const font = await title.getFileHandle('chalet.woff').then((file) => file.getFile());
+		document.getElementById('ls-logo').src = URL.createObjectURL(logo);
+		document.documentElement.style.setProperty('--spinner-image', 'url(' + URL.createObjectURL(spinner) + ')');
+		setMirrorProgress(68, 'Preparing the title screen...');
+		const chalet = new FontFace('Chalet', 'url(' + URL.createObjectURL(font) + ')');
+		await chalet.load();
+		document.fonts.add(chalet);
+		setMirrorProgress(78, 'Saving folder access...');
+		await saveMirrorHandle(handle);
+		setMirrorProgress(86, 'Starting local asset access...');
+		await navigator.serviceWorker.register('/mirror-sw.js');
+		await navigator.serviceWorker.ready;
+		if (!navigator.serviceWorker.controller) await new Promise((resolve, reject) => {
+			const timer = setTimeout(() => reject(new Error('Local asset access could not start. Reload and try again.')), 10000);
+			navigator.serviceWorker.addEventListener('controllerchange', () => { clearTimeout(timer); resolve(); }, { once: true });
+		});
+		await new Promise((resolve, reject) => {
+			const channel = new MessageChannel();
+			const timer = setTimeout(() => reject(new Error('Local asset access did not respond.')), 10000);
+			channel.port1.onmessage = (event) => { clearTimeout(timer); event.data && event.data.ok ? resolve() : reject(new Error(event.data && event.data.error || 'Could not open the mirror folder.')); };
+			navigator.serviceWorker.controller.postMessage({ type: 'set-mirror', handle }, [channel.port2]);
+		});
+		setMirrorProgress(100, 'Mirror ready. Starting the game...');
+		document.getElementById('mirror-gate').hidden = true;
+		resolveMirrorReady();
+	} catch (error) {
+		mirrorProgress.hidden = error.name === 'AbortError';
+		mirrorStatus.textContent = error.name === 'AbortError' ? 'Folder selection cancelled.' : error.message;
+		pickMirror.disabled = false;
+	}
+});
 // URL prefix of everything this page loads (loader, workers, engine, shaders, title art): empty on the dev server; on the PHP host (phase3/host/index.php) it puts the page's own
 // text `/b/8b0b5899ed` through str_replace to `/b/<build id>`, so those files are cached for ever under URLs that change when the build does.
 const BASE = '/b/8b0b5899ed'.charAt(0) === '_' ? '' : '/b/8b0b5899ed';
@@ -124,7 +218,8 @@ let stopTitle = () => {};
 	};
 	const place = (l, x, yr, xr) => { l.el.style.transform = 'translate3d(' + x + 'px,' + l.y + 'px,0) rotateY(' + -yr + 'deg) rotateX(' + -xr + 'deg)'; };
 	// a screen's images, decoded before it may show (the movie waits for its texture dictionary the same way)
-	const prepare = (i) => {
+	const prepare = async (i) => {
+		await mirrorReady;
 		const layers = SCREENS[order[i]].map((d) => ({ ...d, img: Object.assign(new Image(), { src: '/b/8b0b5899ed/title/art/' + d.tex + '.webp' }) }));
 		return Promise.all(layers.map((l) => l.img.decode().catch(() => {}))).then(() => layers);
 	};
@@ -347,7 +442,8 @@ addEventListener('pagehide', () => { try { new BroadcastChannel('game-io').postM
 // Earlier versions cached the game data with a service worker (sw.js) and the Cache API: remove both, the io worker keeps its own store (io_worker.js).
 async function dropOldCache() {
 	try {
-		if ('serviceWorker' in navigator) for (const r of await navigator.serviceWorker.getRegistrations()) await r.unregister();
+		if ('serviceWorker' in navigator) for (const r of await navigator.serviceWorker.getRegistrations())
+			if (!r.active || !r.active.scriptURL.endsWith('/mirror-sw.js')) await r.unregister();
 		if (window.caches) for (const k of await caches.keys()) if (k.startsWith('gamedata')) await caches.delete(k);
 	} catch (e) { console.warn('could not remove the old cache: ' + e); }
 }
@@ -393,6 +489,7 @@ const ENGINE_ARGS = ['-fastscriptcore'];
 // this timer 2.1 ms, a 4 ms wait 5.0 ms). The game has no such timer, so every short sleep cost a whole tick: the limiter held a 60 fps cap to 37 fps and the visibility
 // wait added 15 ms to a frame. An empty callback; nothing else on this thread runs while the game plays.
 setInterval(() => {}, 1);
+await mirrorReady;
 const worker = new Worker(BASE + '/loader.js');
 	worker.onmessage = (ev) => {
 		if (ev.data.hud) hud.textContent = ev.data.hud;
@@ -412,7 +509,7 @@ const worker = new Worker(BASE + '/loader.js');
 		gpuLimits: q.get('limits') || '',		// ?limits=maxSampledTexturesPerShaderStage:16,... : request a smaller GPU device than the adapter offers (reproduces a weaker device's limits; wgpu_worker.js)
 		keepThreads: (q.get('keep') || '').split(',').reduce((m, g) => m | ({ replay: 1, net: 2, bink: 4, idle: 8 }[g] || 0), 0),		// ?keep=replay,net,bink,idle: start those thread groups (diagnostics)
 		cores,
-		noStore: !!(q.get('nocache') || q.get('nosw')),
+		noStore: true,
 		fullConsole: !!q.get('console'),
 		remoteLog,		// ?log=1 (above): loader.js passes it on to the engine threads and the GPU and io workers
 		trace: !!q.get('trace'),		// ?trace=1: log every engine file request (io_worker.js)
